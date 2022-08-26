@@ -1,0 +1,29 @@
+{
+  "name": "couchbase-hapi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "start": "nodemon app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@hapi/hapi": "^20.2.2",
+    "@hapi/inert": "^7.0.0",
+    "dotenv": "^16.0.1",
+    "fs": "0.0.1-security",
+    "handlebars": "^4.7.7",
+    "hapi": "^18.1.0",
+    "hapi-couchdb": "^0.2.0",
+    "inert": "^5.1.3",
+    "joi": "^17.6.0",
+    "path": "^0.12.7",
+    "request": "^2.88.2",
+    "vision": "^5.4.4"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.19"
+  }
+}
