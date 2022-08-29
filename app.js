@@ -1,11 +1,7 @@
 const Hapi = require("@hapi/hapi");
-const request = require("request");
-const fs = require("fs");
-const Joi = require("joi");
 
-require("dotenv").config();
-
-const { DATABASEURL, GETDOCSURL } = process.env;
+const { getProducts, addProduct, updateProduct, deleteProduct } = require("./controllers/productController");
+const { validateRequestPayload } = require("./utils/joiValidator");
 
 const payload = {
   parse: true,
@@ -45,28 +41,7 @@ const provision = async () => {
   server.route({
     path: "/products",
     method: "GET",
-    handler: async (req, h) => {
-      const [data, error] = await promiser(
-        new Promise((resolve, reject) => {
-          request(
-            {
-              url: GETDOCSURL,
-            },
-            (err, res, body) => {
-              if (err) {
-                reject(err);
-              } else {
-                resolve(body);
-              }
-            }
-          );
-        })
-      );
-      if (error) {
-        return error;
-      }
-      return data;
-    },
+    handler: async (req, h) => getProducts(req, h),
   });
 
   //ADD PRODUCT
@@ -75,7 +50,7 @@ const provision = async () => {
     method: "POST",
     options: {
       validate: {
-        payload: validateProductDetails([
+        payload: validateRequestPayload([
           "name",
           "description",
           "price",
@@ -85,31 +60,7 @@ const provision = async () => {
       },
       payload,
     },
-    handler: async (req, h) => {
-      const [data, error] = await promiser(
-        new Promise(async (resolve, reject) => {
-          const { image } = await handleFileUpload(req.payload.image);
-          request(
-            {
-              method: "POST",
-              url: DATABASEURL,
-              headers: { "content-type": "application/json" },
-              json: { ...req.payload, image },
-            },
-            (err, res, body) => {
-              if (err) {
-                reject(err);
-              }
-              resolve(body);
-            }
-          );
-        })
-      );
-      if (error) {
-        return { message: error.message };
-      }
-      return data;
-    },
+    handler: async (req, h) => addProduct(req, h),
   });
 
   //UPDATE PRODUCT
@@ -118,43 +69,11 @@ const provision = async () => {
     method: "PUT",
     options: {
       validate: {
-        payload: validateProductDetails(["_id"], true),
+        payload: validateRequestPayload(["_id"], true),
       },
       payload,
     },
-    handler: async (req, h) => {
-      const [data, error] = await promiser(
-        new Promise(async (resolve, reject) => {
-          const prevData = await getproductById(req.payload._id);
-          if (req.payload.image) {
-            if (!prevData.image) return reject("Image not found");
-            const fileName = prevData.image.split("/").pop();
-            removeFile(fileName);
-            const { image } = await handleFileUpload(req.payload.image);
-            if (!image) reject("Invalid Image Format");
-            req.payload = { ...req.payload, image };
-          }
-          request(
-            {
-              method: "PUT",
-              url: `${DATABASEURL}/${req.payload._id}`,
-              headers: { "content-type": "application/json" },
-              json: { ...prevData, ...req.payload },
-            },
-            (err, res, body) => {
-              if (err) {
-                reject(err);
-              }
-              resolve(body);
-            }
-          );
-        })
-      );
-      if (error) {
-        return { message: error.message };
-      }
-      return data;
-    },
+    handler: async (req, h) => updateProduct(req, h),
   });
 
   //DELETE PRODUCT
@@ -163,34 +82,10 @@ const provision = async () => {
     method: "DELETE",
     options: {
       validate: {
-        payload: validateProductDetails(["_id", "_rev"]),
+        payload: validateRequestPayload(["_id", "_rev"]),
       },
     },
-    handler: async (req, h) => {
-      const [data, error] = await promiser(
-        new Promise(async (resolve, reject) => {
-          const { image } = await getproductById(req.payload._id);
-          if (!image) return reject("Image not found");
-          removeFile(image.split("/").pop());
-          request(
-            {
-              method: "DELETE",
-              url: `${DATABASEURL}/${req.payload._id}?rev=${req.payload._rev}`,
-            },
-            (err, res, body) => {
-              if (err) {
-                reject(err);
-              }
-              resolve(body);
-            }
-          );
-        })
-      );
-      if (error) {
-        return { message: error.message };
-      }
-      return data;
-    },
+    handler: async (req, h) => deleteProduct(req, h),
   });
 
   //Start Server
@@ -201,105 +96,3 @@ const provision = async () => {
 };
 
 provision();
-
-const getproductById = (id) => {
-  return new Promise((resolve, reject) => {
-    request(
-      {
-        url: `${DATABASEURL}/${id}`,
-      },
-      (err, res, body) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(JSON.parse(body));
-        }
-      }
-    );
-  });
-};
-
-const validateProductDetails = (keysArr, allowUnknown = false) => {
-  const validationKeys = createValidationObject(keysArr);
-  return allowUnknown
-    ? Joi.object(validationKeys).options({ allowUnknown })
-    : Joi.object(validationKeys);
-};
-
-const createValidationObject = (keysArr = []) => {
-  let validationKeys = {};
-
-  keysArr.forEach((key) => {
-    switch (key) {
-      case "name":
-        validationKeys = {
-          ...validationKeys,
-          name: Joi.string().min(3).required(),
-        };
-        break;
-      case "description":
-        validationKeys = {
-          ...validationKeys,
-          description: Joi.string().min(5).required(),
-        };
-        break;
-      case "price":
-        validationKeys = { ...validationKeys, price: Joi.number().required() };
-        break;
-      case "quantity":
-        validationKeys = {
-          ...validationKeys,
-          quantity: Joi.number().integer(),
-        };
-        break;
-      case "image":
-        validationKeys = { ...validationKeys, image: Joi.any().required() };
-        break;
-      case "_id":
-        validationKeys = { ...validationKeys, _id: Joi.string().required() };
-        break;
-      case "_rev":
-        validationKeys = { ...validationKeys, _rev: Joi.string().required() };
-        break;
-      default:
-        return;
-    }
-  });
-  return validationKeys;
-};
-
-const handleFileUpload = (file) => {
-  return new Promise((resolve, reject) => {
-    let invalidImageFormat = !["image/jpeg", "image/jpg", "image/png"].includes(
-      file.hapi.headers["content-type"]
-    );
-    if (invalidImageFormat) reject("INVALID IMAGE FORMAT");
-    const fileName = file.hapi.filename;
-    const data = file._data;
-
-    fs.writeFile(`./public/uploads/${fileName}`, data, (err) => {
-      if (err) {
-        reject(err);
-      }
-      resolve({
-        image: `${server.info.uri}/uploads/${fileName}`,
-      });
-    });
-  });
-};
-
-const removeFile = (fileName) => {
-  fs.rmSync(`public/uploads/${fileName}`, {
-    force: true,
-  });
-  return;
-};
-
-const promiser = async (promise) => {
-  try {
-    const data = await promise;
-    return [data, null];
-  } catch (error) {
-    return [null, error];
-  }
-};
